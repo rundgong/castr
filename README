@@ -1,0 +1,54 @@
+castr - a CLI and C++ library to cast media files to Chromecast devices
+        using the built in Default Media Receiver
+
+-- CLI usage --
+Examples:
+    castr my_video.mp4 my_second_video.mp4
+    castr https://www.example.com/some_video_on_the_internet.mp4
+
+Controlling playback:
+  SPACEBAR: Play/Pause
+  n:        Next
+  p:        Previous
+  s:        Stop
+  r:        Restart media from beginning*
+  f:        Seek forward 60 seconds*
+  F:        Seek forward 600 seconds*
+  b:        Seek backwards 60 seconds*
+  B:        Seek backwards 600 seconds*
+  m:        Mute on/off
+  v:        Volume down
+  V:        Volume up
+  h:        Help
+  q:        Quit
+
+  * Note: Seeking is not supported by all media
+
+Supported file types:
+    aac, mp3, wav, webm, mp4,
+    gif, jpg, png, webp, mpd, m3u8
+
+If you have ffmpeg installed and a computer that is fast enough to
+encode video in real time, all other common video formats are supported
+through the helper script castr-convert.
+Example:
+    castr-convert my_video.mkv
+
+
+-- Build instructions --
+
+Dependencies, and how to install them on Ubuntu:
+* protobuf - Protocol to communicate with Chromecast
+  sudo apt install protobuf-compiler protobuf-dev
+
+* avahi - mDNS implementation used to locate Chromecast device
+  sudo apt install libavahi-client-dev
+
+
+Building:
+  mkdir build
+  cd build
+  cmake ..
+  make
+
+

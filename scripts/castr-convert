@@ -1,0 +1,105 @@
+#!/bin/bash
+
+function check_binary() {
+
+    which $1 > /dev/null
+    RET=$?
+
+    if [ $RET == 1 ]; then
+        echo "Error: Could not find required application $1."
+        exit 1
+    fi
+
+}
+
+if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+    echo "Usage:  $(basename $0) [-f] FILENAME"
+    echo ""
+    echo "  Convert video using ffmpeg and then cast to Chromecast using castr"
+    echo ""
+    echo "Options:"
+    echo "  -f      Fast conversion. Trying to guess if audio/video can be used without re-encoding"
+    echo ""
+    exit 0
+fi
+
+check_binary ffmpeg
+check_binary castr
+
+LOG_FILE=/tmp/castr.log
+
+
+FAST_CONVERT="no"
+INPUT=$1
+
+if [ "$1" == "-f" ]; then
+    FAST_CONVERT="yes"
+    INPUT=$2
+    echo "Fast conversion" ${INPUT}
+fi
+
+# MPEG DASH setup
+STREAM_TYPE="dash"
+STREAM_EXTENSION="mpd"
+STREAM_PARAMS=""
+
+# HLS setup
+# STREAM_TYPE="hls"
+# STREAM_EXTENSION="m3u8"
+# STREAM_PARAMS="-start_number 0 -hls_time 10 -hls_list_size 0"
+
+# HLS is usually quicker to allow seeking than DASH, but the decoder 
+# seems sensitive to bad timestamps in the stream. When that happens
+# the video is aborted, so DASH seems to be the safest choice.
+
+OUTPUT_FOLDER="${INPUT}.${STREAM_TYPE}"
+OUTPUT="${OUTPUT_FOLDER}/`basename ${INPUT}`.${STREAM_EXTENSION}"
+
+echo "Convert" `basename ${INPUT}` "to MPEG ${STREAM_TYPE} for streaming"
+echo "Creating temporary files at" ${OUTPUT_FOLDER}
+
+
+AUDIO_PARAMS="-acodec aac -ac 2 -ar 44100"
+VIDEO_PARAMS="-vcodec h264 -preset veryfast -profile:v main"
+
+if [ "${FAST_CONVERT}" == "yes" ]; then
+    check_binary ffprobe
+
+    # Check if codecs are already in the format supported by Chromecast devices (aac/mp3 for audio and h264/h265 for video)
+    AUDIO_RESULT="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name   -of default=noprint_wrappers=1:nokey=1 $INPUT)"
+    VIDEO_RESULT="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name   -of default=noprint_wrappers=1:nokey=1 $INPUT)"
+
+    if [ "${AUDIO_RESULT}" == "aac" ]; then
+        echo "Keep audio stream with codec ${AUDIO_RESULT}"
+        AUDIO_PARAMS="-acodec copy"
+    fi
+
+    if [ "${VIDEO_RESULT}" == "h264" ] || [ "${VIDEO_RESULT}" == "h265" ]; then
+        echo "Keep video stream with codec ${VIDEO_RESULT}"
+        VIDEO_PARAMS="-vcodec copy"
+    fi
+fi
+
+
+mkdir ${OUTPUT_FOLDER}
+
+ffmpeg -i "${INPUT}" -y ${AUDIO_PARAMS} ${VIDEO_PARAMS} -f ${STREAM_TYPE} ${STREAM_PARAMS} "${OUTPUT}" 2> ${LOG_FILE} &
+FFMPEG_PID=$!
+
+# Wait a while so the encoder has time to produce some output
+printf .
+sleep 1
+printf .
+sleep 1
+printf .
+sleep 1
+
+# Chromecast will start the video at the current time as converted by ffmpeg.
+# --stream-restart ensures we start at the beginning.
+castr --stream-restart ${OUTPUT}
+
+echo "Cleaning up temporary files..."
+kill ${FFMPEG_PID} 2>> ${LOG_FILE}
+sleep 1
+rm -rf ${OUTPUT_FOLDER}
+
